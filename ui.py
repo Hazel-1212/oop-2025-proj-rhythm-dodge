@@ -1,7 +1,6 @@
 import pygame
 
 def hud(screen, current_health, max_health = 100):
-
     # Bar dimensions
     bar_x, bar_y = 290, 20
     bar_width, bar_height = 200, 20
@@ -45,5 +44,5 @@ def hud(screen, current_health, max_health = 100):
 
     #寫文字(血量)
     font = pygame.font.Font("assets/fonts/Orbitron-Bold.ttf", 14)
-    text = font.render(f"HP: {current_health}/{max_health}", True, (255, 255, 255))
+    text = font.render(f"HP: {int(current_health)}/{max_health}", True, (255, 255, 255))
     screen.blit(text, (bar_x + 5, bar_y + 2))

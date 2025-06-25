@@ -6,39 +6,35 @@ import random
 class Obstacle:
     def __init__(self, x, y, w, h, vx, vy):
         self.rect = pygame.Rect(x, y, w, h)
-        self.color = (255, 50, 50)
+        self.color = (255, 58, 111) #original:(255, 50, 50) 
         self.vx = vx
         self.vy = vy
         self.shake_duration = 0
+        self.magnitude = 0  # <<< NEW
 
     def update(self):
         self.rect.x += self.vx
         self.rect.y += self.vy
 
     def draw(self, screen):
-        # Apply shake offset if active
         offset_x, offset_y = 0, 0
         if self.shake_duration > 0:
-            magnitude = 10  # Shake intensity
-            offset_x = random.randint(-magnitude, magnitude)
-            offset_y = random.randint(-magnitude, magnitude)
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
             self.shake_duration -= 1
-        else:
-            offset_x = 0
-            offset_y = 0
-        # Draw the obstacle with the shake offset
+
         shaken_rect = self.rect.copy()
         shaken_rect.x += offset_x
         shaken_rect.y += offset_y
-        # Draw the rectangle with the current color
         pygame.draw.rect(screen, self.color, shaken_rect)
-        # 如果震動結束，重置shake_duration
+
         if self.shake_duration <= 0:
             self.shake_duration = 0
 
-    def shake(self, duration=20):
-        """開始震動，持續duration幀"""
+    def shake(self, duration, magnitude):
         self.shake_duration = duration
+        self.magnitude = magnitude
+
 
 class SinObstacle(Obstacle):
     def __init__(self, x, y, w, h, vx, vy, amplitude, frequency):
@@ -50,161 +46,121 @@ class SinObstacle(Obstacle):
 
     def update(self):
         super().update()
-        t = (pygame.time.get_ticks() - self.start_time)
+        t = pygame.time.get_ticks() - self.start_time
         self.rect.y = self.base_y + self.amplitude * math.sin(t * self.frequency)
+
 
 class FollowObstacle(Obstacle):
     def __init__(self, x, y, w, h, player, speed):
-        # 計算指向玩家的方向向量
-        dx = player.rect.centerx - x
-        dy = player.rect.centery - y
+        dx = player.rect.centerx - (x + w/2)
+        dy = player.rect.centery - (y + h/2)
         length = max(1, math.hypot(dx, dy))
-
-        # 單位方向向量乘以速度
         vx = dx / length * speed
         vy = dy / length * speed
-
         super().__init__(x, y, w, h, vx, vy)
 
     def update(self):
         self.rect.x += self.vx
         self.rect.y += self.vy
 
+
 class LaserObstacle(Obstacle):
-    def __init__(self, x, y, w, h, vx, vy, charge_time, duration = 300):
+    def __init__(self, x, y, w, h, vx, vy, charge_time, duration=300, sound = True, shaker = False):
         super().__init__(x, y, w, h, vx, vy)
         self.charge_time = charge_time
         self.duration = duration
-        self.spawn_time = pygame.time.get_ticks() 
+        self.spawn_time = pygame.time.get_ticks()
         self.activated = False
         self.expired = False
-        self.effect_playing = False  # 用於控制音效播放
-
-
-        # 預熱階段變數
+        self.effect_playing = False
         self.stage = 0
         self.alpha = 0
         self.line_width = 2
         self.transition_progress = 0
-
-
-        #shake
-       
-
+        self.sound = sound
+        self.shaker = shaker
 
     def update(self):
         now = pygame.time.get_ticks()
         elapsed = now - self.spawn_time
-        ct = self.charge_time  # 考慮到遊戲速度調整
+        ct = self.charge_time
         if elapsed < ct + self.duration + 200:
             if elapsed < ct - 200:
-                # 淡入紅色提示（0 → 80)
                 self.stage = 1
                 self.alpha = int(80 * (elapsed / (ct - 200)))
-
-
             elif elapsed < ct - 160:
-                # 消失階段
                 self.stage = 2
-
-
             elif elapsed < ct:
-                # 細白線 → 擴展
                 self.stage = 3
                 progress = (elapsed - ct + 160) / 160
-                max_width = self.rect.width if self.rect.width > self.rect.height else self.rect.height
+                max_width = max(self.rect.width, self.rect.height)
                 self.line_width = int(2 + (max_width - 2) * progress)
-
-
             elif elapsed < ct + 100:
-                # 白線轉紅線 # 正式啟動
                 self.activated = True
                 self.activate_time = now
                 self.stage = 4
                 self.transition_progress = min(1, (elapsed - ct) / 100)
-
-
             elif elapsed < ct + self.duration + 200:
-                self.stage = 5 # 雷射結束階段
+                self.stage = 5
                 progress = (elapsed - ct - 100) / (self.duration + 100)
                 if progress > 0.7:
                     self.activated = False
-                max_width = self.rect.width if self.rect.width > self.rect.height else self.rect.height
+                max_width = max(self.rect.width, self.rect.height)
                 self.line_width = int(max_width * (1 - progress))
         else:
             self.expired = True
-       
-        if self.activated and not self.effect_playing:
-            effect.lazer()
-            self.effect_playing = True  # 確保音效只播放一次
 
+        if self.activated and not self.effect_playing and self.sound:
+            effect.lazer()
+            self.effect_playing = True
 
     def get_centered_line_rect(self, width):
-        """在原本範圍中心生成一個長條雷射區塊（可調整寬度）"""
         if self.rect.width > self.rect.height:
-            # 水平雷射（上下擴張）
             h = width
             y = self.rect.centery - h // 2
             return pygame.Rect(0, y - self.rect.top, self.rect.width, h)
         else:
-            # 垂直雷射（左右擴張）
             w = width
             x = self.rect.centerx - w // 2
             return pygame.Rect(x - self.rect.left, 0, w, self.rect.height)
 
-
     def draw(self, screen):
-        shake_magnitude = 30
+        offset_x, offset_y = 0, 0
 
-
-        if self.shake_duration > 0:
-            offset_x = random.randint(-shake_magnitude, shake_magnitude)
-            offset_y = random.randint(-shake_magnitude, shake_magnitude)
+        if self.shaker:
+            offset_x, offset_y = random.randint(-7, 7), random.randint(-7, 7)
+        elif self.shake_duration > 0:
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
             self.shake_duration -= 1
-        else:
-            offset_x = 0
-            offset_y = 0
+        elif self.shaker:
+            offset_x = random.randint(-7, 7)
+            offset_y = random.randint(-7, 7)
 
-
-        # Create a laser_surface exactly as in draw()
         laser_surface = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
 
-
-        if self.stage == 1:
-            color = (255, 0, 0, self.alpha)
+        if self.stage == 1: 
+            color = (255, 0, 0, self.alpha) # original:(255, 0, 0) 
             pygame.draw.rect(laser_surface, color, (0, 0, self.rect.width, self.rect.height))
-
-
         elif self.stage == 2:
-            pass  # no draw
-
-
+            pass
         elif self.stage == 3:
             color = (255, 255, 255, 255)
             rect = self.get_centered_line_rect(self.line_width)
             pygame.draw.rect(laser_surface, color, rect)
-
-
         elif self.stage == 4:
             r = 200
             g = int(255 * (1 - self.transition_progress))
-            b = int(255 * (1 - self.transition_progress ** (1/2)))
+            b = int(255 * (1 - self.transition_progress ** 0.5))
             color = (r, g, b, 255)
-            rect = self.get_centered_line_rect(self.rect.width if self.rect.width > self.rect.height else self.rect.height)
+            rect = self.get_centered_line_rect(max(self.rect.width, self.rect.height))
             pygame.draw.rect(laser_surface, color, rect)
-
-
         elif self.stage == 5:
-            color = (200, 0, 0, 255)
+            color = (255, 0, 0, 255)
             rect = self.get_centered_line_rect(self.line_width)
             pygame.draw.rect(laser_surface, color, rect)
 
-
-        # Calculate shaken position
-        shaken_pos = (self.rect.x + offset_x, self.rect.y + offset_y)
-
-
-        # Blit the laser surface with shake offsets
+        shaken_pos = (self.rect.x + offset_x*(self.stage >= 3), self.rect.y + offset_y*(self.stage >= 3))
         screen.blit(laser_surface, shaken_pos)
 
 
@@ -212,47 +168,39 @@ class CircleObstacle(Obstacle):
     def __init__(self, x, y, radius, vx, vy):
         super().__init__(x, y, radius * 2, radius * 2, vx, vy)
         self.radius = radius
+
     def collide(self, player):
-        """檢查玩家是否碰撞到圓形障礙物"""
         left_x = player.rect.centerx - player.rect.width / 2
         right_x = player.rect.centerx + player.rect.width / 2
         top_y = player.rect.centery - player.rect.height / 2
         bottom_y = player.rect.centery + player.rect.height / 2
-        distance_lefttop = math.hypot(left_x - self.rect.centerx, top_y - self.rect.centery)
-        distance_righttop = math.hypot(right_x - self.rect.centerx, top_y - self.rect.centery)
-        distance_leftbottom = math.hypot(left_x - self.rect.centerx, bottom_y - self.rect.centery)
-        distance_rightbottom = math.hypot(right_x - self.rect.centerx, bottom_y - self.rect.centery)
-        distance = min(distance_lefttop, distance_righttop, distance_leftbottom, distance_rightbottom)
-        return distance <= self.radius
-    
-    #def draw(self, screen):
-        #pygame.draw.circle(screen, self.color, self.rect.center, self.radius)
-    
+        distances = [
+            math.hypot(left_x - self.rect.centerx, top_y - self.rect.centery),
+            math.hypot(right_x - self.rect.centerx, top_y - self.rect.centery),
+            math.hypot(left_x - self.rect.centerx, bottom_y - self.rect.centery),
+            math.hypot(right_x - self.rect.centerx, bottom_y - self.rect.centery),
+        ]
+        return min(distances) <= self.radius
+
     def draw(self, screen):
-        # Apply shake offset if active
         offset_x, offset_y = 0, 0
         if self.shake_duration > 0:
-            magnitude = 10  # Shake intensity
-            offset_x = random.randint(-magnitude, magnitude)
-            offset_y = random.randint(-magnitude, magnitude)
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
             self.shake_duration -= 1
-        else:
-            offset_x = 0
-            offset_y = 0
-        # Draw the obstacle with the shake offset
+
         shaken_rect = self.rect.copy()
         shaken_rect.x += offset_x
         shaken_rect.y += offset_y
-        # Draw the rectangle with the current color
         pygame.draw.circle(screen, self.color, shaken_rect.center, self.radius)
-        # 如果震動結束，重置shake_duration
+
         if self.shake_duration <= 0:
             self.shake_duration = 0
 
 class FollowCircleObstacle(CircleObstacle):
     def __init__(self, x, y, radius, player, speed):
-        dx = player.rect.centerx - x
-        dy = player.rect.centery - y
+        dx = player.rect.centerx - (x + radius)
+        dy = player.rect.centery - (y + radius)
         length = max(1, math.hypot(dx, dy))
         vx = dx / length * speed
         vy = dy / length * speed
@@ -280,7 +228,7 @@ class SinCircleObstacle(CircleObstacle):
         self.rect.y = self.base_y + self.amplitude * math.sin(t * self.frequency)
 
 class LaserCircleObstacle(CircleObstacle):
-    def __init__(self, x, y, radius, vx, vy, charge_time, duration=300):
+    def __init__(self, x, y, radius, vx, vy, charge_time, duration=300, sound = True):
         super().__init__(x, y, radius, vx, vy)
         self.charge_time = charge_time
         self.duration = duration
@@ -292,10 +240,7 @@ class LaserCircleObstacle(CircleObstacle):
         self.line_width = 2
         self.transition_progress = 0
         self.effect_playing = False
-
-        #shake
-        self.shake_direction=0
-
+        self.sound = sound
 
     def update(self):
         now = pygame.time.get_ticks()
@@ -332,12 +277,17 @@ class LaserCircleObstacle(CircleObstacle):
         else:
             self.expired = True
 
-        if self.activated and not self.effect_playing:
+        if self.activated and not self.effect_playing and self.sound:
             effect.lazer()
             self.effect_playing = True
 
     def draw(self, screen):
         surface = pygame.Surface((self.rect.width, self.rect.height), pygame.SRCALPHA)
+
+        offset_x, offset_y = 0, 0
+        if self.shake_duration > 0:
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
 
         if self.stage == 1:
             color = (255, 0, 0, self.alpha)
@@ -351,20 +301,22 @@ class LaserCircleObstacle(CircleObstacle):
             pygame.draw.circle(surface, color, (self.radius, self.radius), self.line_width // 2)
 
         elif self.stage == 4:
-            r = 200
+            r = 255
             g = int(255 * (1 - self.transition_progress))
             b = int(255 * (1 - self.transition_progress**(1/2)))
             color = (r, g, b, 255)
             pygame.draw.circle(surface, color, (self.radius, self.radius), self.radius)
 
         elif self.stage == 5:
-            color = (200, 0, 0, 255)
+            color = (255, 0, 0, 255) 
             pygame.draw.circle(surface, color, (self.radius, self.radius), self.line_width // 2)
 
-        screen.blit(surface, self.rect.topleft)
+        draw_x = self.rect.x + offset_x*(self.stage >= 3)
+        draw_y = self.rect.y + offset_y*(self.stage >= 3)
+        screen.blit(surface, (draw_x, draw_y))
 
 class GearObstacle(CircleObstacle):
-    def __init__(self, x, y, radius, vx, vy, teeth=12, color=(255, 0, 0), rotation_speed=2):
+    def __init__(self, x, y, radius, vx, vy, teeth=12, color=(255, 58, 111), rotation_speed=2): #original: (255, 0 ,0)
         self.x = x + radius
         self.y = y + radius
         self.radius = radius
@@ -377,27 +329,21 @@ class GearObstacle(CircleObstacle):
         self.hitbox_type = "circle"
         self.rect = pygame.Rect(x - radius, y - radius, radius * 2, radius * 2)
         self.shake_duration = 0
+        self.shake_magnitude = 0
 
     def update(self):
         self.x += self.vx
         self.y += self.vy
         self.rotation += self.rotation_speed
         self.rect.center = (self.x, self.y)
-        
-        # Shake countdown
-        if self.shake_duration > 0:
-            self.shake_duration -= 1
-
-    def shake(self, duration=30):
-        self.shake_duration = duration  # duration in frames
 
     def draw(self, screen):
         # Apply shake offset if active
         offset_x, offset_y = 0, 0
         if self.shake_duration > 0:
-            magnitude = 10  # Shake intensity
-            offset_x = random.randint(-magnitude, magnitude)
-            offset_y = random.randint(-magnitude, magnitude)
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
+            self.shake_duration -= 1
 
         tooth_len = self.radius * 0.3
         surface_size = self.radius * 2 + tooth_len * 2
@@ -435,8 +381,8 @@ class GearObstacle(CircleObstacle):
 class FollowGearObstacle(GearObstacle):
     def __init__(self, x, y, radius, player, speed, teeth, rotation_speed=2):
         super().__init__(x, y, radius, 0, 0, teeth, rotation_speed=rotation_speed)
-        dx = player.rect.centerx - x
-        dy = player.rect.centery - y
+        dx = player.rect.centerx - (x + radius)
+        dy = player.rect.centery - (y + radius)
         length = max(1, math.hypot(dx, dy))
         vx = dx / length * speed
         vy = dy / length * speed
@@ -498,25 +444,25 @@ class CannonObstacle:
         # 0610
         self.shake_duration = 0
 
-    def update(self, screen_rect, player):
+    def update(self, screen, player):
         if self.state == "moving":
             self.x += self.vx
             self.y += self.vy
             self.rect.topleft = (self.x, self.y)
 
-            if not screen_rect.contains(self.rect):
+            if not screen.contains(self.rect):
                 self.state = "wave"
-                if self.rect.right > screen_rect.right:
-                    self.wave_origin = (screen_rect.right, self.rect.centery)
+                if self.rect.right > screen.right:
+                    self.wave_origin = (screen.right, self.rect.centery)
                     self.wave_dir = "left"
-                elif self.rect.left < screen_rect.left:
-                    self.wave_origin = (screen_rect.left, self.rect.centery)
+                elif self.rect.left < screen.left:
+                    self.wave_origin = (screen.left, self.rect.centery)
                     self.wave_dir = "right"
-                elif self.rect.bottom > screen_rect.bottom:
-                    self.wave_origin = (self.rect.centerx, screen_rect.bottom)
+                elif self.rect.bottom > screen.bottom:
+                    self.wave_origin = (self.rect.centerx, screen.bottom)
                     self.wave_dir = "up"
-                elif self.rect.top < screen_rect.top:
-                    self.wave_origin = (self.rect.centerx, screen_rect.top)
+                elif self.rect.top < screen.top:
+                    self.wave_origin = (self.rect.centerx, screen.top)
                     self.wave_dir = "down"
 
         elif self.state == "wave":
@@ -565,10 +511,11 @@ class CannonObstacle:
         for rect in self.wave_rects:
             if player.rect.colliderect(rect):
                 effect.hurt(self)
-                player.blood = player.blood - 1
+                player.blood = player.blood - (0.001*self.wave_amplitude)**2
                 self.wave_damaged = True  
                 # start to shake
                 self.shake() 
+
                 
     def draw(self, screen):
         # If shaking, apply shake offsets
@@ -583,17 +530,18 @@ class CannonObstacle:
             shaken_rect = self.rect.copy()
             shaken_rect.x += offset_x
             shaken_rect.y += offset_y
-            pygame.draw.rect(screen, (255, 100, 50), shaken_rect)
+            pygame.draw.rect(screen, (255, 0, 0), shaken_rect) # original: (255, 50, 50)
 
         elif self.state == "wave":
             for rect in self.wave_rects:
                 rect.x += offset_x
                 rect.y += offset_y
-                pygame.draw.rect(screen, (255, 0, 0), rect)
+                pygame.draw.rect(screen, (255, 0, 0), rect) # original:(255, 0, 0)
                 
-    def shake(self, duration=20):
+    def shake(self, duration=20, magnitude=20):
         """開始震動，持續duration幀"""
         self.shake_duration = duration
+        self.magnitude = magnitude
         # 震動時也要更新wave_damaged狀態
         self.wave_damaged = False
 
@@ -622,7 +570,7 @@ class RingObstacle(CircleObstacle):
 
         progress = elapsed / self.duration
         self.radius = int(self.max_radius * progress)
-        self.alpha = int(255 * (1 - progress)) if self.fade_out else 255
+        self.alpha = int(255 * (1 - 0.9*progress**2)) if self.fade_out else 255
 
         # 更新中心位置
         self.center_pos += pygame.Vector2(self.vx, self.vy)
@@ -630,6 +578,12 @@ class RingObstacle(CircleObstacle):
     def draw(self, screen):
         if self.radius <= 0:
             return  # 不畫
+        
+        offset_x, offset_y = 0, 0
+        if self.shake_duration > 0:
+            offset_x = random.randint(-self.magnitude, self.magnitude)
+            offset_y = random.randint(-self.magnitude, self.magnitude)
+            self.shake_duration -= 1
 
         surface_size = self.radius * 2 + self.thickness
         surface = pygame.Surface((surface_size, surface_size), pygame.SRCALPHA)
@@ -637,15 +591,15 @@ class RingObstacle(CircleObstacle):
 
         pygame.draw.circle(
             surface,
-            (255, 0, 0, self.alpha),
+            (255, 58, 111, self.alpha), # original: (255, 0, 0)
             center,
             self.radius,
             self.thickness
         )
 
         screen.blit(surface, (
-            self.center_pos.x - center[0],
-            self.center_pos.y - center[1]
+            self.center_pos.x - center[0] + offset_x ,
+            self.center_pos.y - center[1] + offset_y
         ))
 
     def collide(self, player):
@@ -665,4 +619,3 @@ class RingObstacle(CircleObstacle):
         inner = self.radius - self.thickness
         outer = self.radius
         return inner <= dist_min <= outer or inner <= dist_max <= outer 
-

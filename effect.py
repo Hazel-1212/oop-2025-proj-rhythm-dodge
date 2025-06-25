@@ -1,37 +1,45 @@
 import pygame
+import math
+import random
 
 def hurt(o):
+    sound = pygame.mixer.Sound("assets/sound_effect/snd_break1.wav")
     """Play audio and visual effect when the player gets hurt."""
+    damage = 0
     ob = o.__class__.__name__
-    if ob=="FollowObstacle":
-        sound = pygame.mixer.Sound("assets/sound_effect/snd_arrow.wav")
-        sound.play()
+    if ob=="FollowObstacle" or ob=="FollowCircleObstacle" or ob=="FollowGearObstacle":
+        #sound = pygame.mixer.Sound("assets/sound_effect/snd_arrow.wav")
+        #sound.play()
+        damage = 1
 
-    elif ob=="SinCircleObstacle" or "SinObstacle" or "SinGearObstacle":
-        #print("ding")
-        sound = pygame.mixer.Sound("assets/sound_effect/old/ding.wav")
-        sound.play()
+    elif ob=="SinCircleObstacle" or ob=="SinObstacle" or ob=="SinGearObstacle" or ob=="RingObstacle":
+        #sound = pygame.mixer.Sound("assets/sound_effect/old/ding.wav")
+        #sound.play()
+        damage = 2
 
-    elif ob=="FollowCircleObstacle":
-        sound = pygame.mixer.Sound("assets/sound_effect/snd_battlefall.wav")
-        sound.play()
+    elif ob=="LaserCircleObstacle" or ob=="LaserObstacle":
+        damage = 0.2
+        sound.set_volume(0.5)
 
-    if ob=="LaserCircleObstacle" or "LaserObstacle":
-        lazer()
+    elif ob=="CannonObstacle":
+        sound.set_volume(0.4)
+        damage = 5
+        #sound = pygame.mixer.Sound("assets/sound_effect/snd_buyitem.wav")
+        #sound.play()'''
 
-    elif ob=="GearObstacle" or "FollowGearObstacle" :
-        #print("ding")
-        sound = pygame.mixer.Sound("assets/sound_effect/old/ding.wav")
-        sound.play()
+    elif ob=="CircleObstacle" or ob=="Obstacle" or ob=="GearObstacle":
+        damage = 2
 
-    if ob=="CannonObstacle":
-        # print("delarn")
-        sound = pygame.mixer.Sound("assets/sound_effect/snd_buyitem.wav")
-        sound.play()  
+    else:
+        sound.set_volume(0.1)
+    sound.play()
+    
+    return damage
+     
 
 def lazer():
     sound = pygame.mixer.Sound("assets/sound_effect/mus_sfx_rainbowbeam_1.wav")
-    sound.set_volume(0.25)
+    sound.set_volume(0.35)
     sound.play(maxtime=1000)
 
 

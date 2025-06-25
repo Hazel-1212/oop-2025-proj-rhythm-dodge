@@ -11,7 +11,7 @@ def update_obstacles(screen,screen_rect,particles,events, player, obstacles, spa
             elif evt.get("type") == "follow":
                 obs = FollowObstacle(evt["x"], evt["y"], evt["w"], evt["h"],player , speed=evt.get("speed", 15))
             elif evt.get("type") == "laser":
-                obs = LaserObstacle(evt["x"], evt["y"], evt["w"], evt["h"], evt["vx"], evt["vy"], charge_time=evt.get("charge", 1000)/ bpm_scale) 
+                obs = LaserObstacle(evt["x"], evt["y"], evt["w"], evt["h"], evt["vx"], evt["vy"], charge_time=evt.get("charge", 1000)/ bpm_scale, sound = evt.get("sound", True), shaker = evt.get("shake", False)) 
             
             # === 圓形類型 ===
             elif evt.get("type") == "circle":
@@ -38,7 +38,8 @@ def update_obstacles(screen,screen_rect,particles,events, player, obstacles, spa
                 obs = LaserCircleObstacle(
                     evt["x"], evt["y"], evt.get("radius",25),
                     evt["vx"], evt["vy"],
-                    charge_time=evt.get("charge", 1000) / bpm_scale
+                    charge_time= evt.get("charge", 1000) / bpm_scale,
+                    sound = evt.get("sound", True)
                 )
             elif evt.get("type") == "gear":
                 obs = GearObstacle(
@@ -72,11 +73,11 @@ def update_obstacles(screen,screen_rect,particles,events, player, obstacles, spa
                 )
             elif evt.get("type") == "ring":
                 obs = RingObstacle(
-                evt["x"],
-                evt["y"],
+                evt["x"],evt["y"],
                 evt.get("radius", 700),        
                 evt.get("duration", 400),                
-                evt.get("thickness", 40),              
+                evt.get("thickness", 40),
+                evt.get("vx", 0), evt.get("vy", 0), evt.get("fade", 1)
                 )
             else:
                 obs = Obstacle(evt["x"], evt["y"], evt["w"], evt["h"], evt["vx"], evt["vy"])
@@ -85,6 +86,7 @@ def update_obstacles(screen,screen_rect,particles,events, player, obstacles, spa
     
     # 更新障礙物
     all_pass = True
+
     for o in obstacles:
         if isinstance(o, CannonObstacle):
             o.update(screen_rect, player)
@@ -102,25 +104,34 @@ def update_obstacles(screen,screen_rect,particles,events, player, obstacles, spa
                 if o.collide(player):
                     if isinstance(o, LaserCircleObstacle) and not o.activated:
                         continue  # 預熱中的雷射不造成傷害
-                    if prev_obs != o and player.blood > 0:
+                    if o not in prev_obs and player.blood > 0:
                         all_pass=False
-                        player.blood = player.blood - 1
-                        prev_obs = o
-                        effect.hurt(o)
-                    for _ in range(30):
-                        particles.append(Particle(player.rect.centerx, player.rect.centery))
+                        damage = effect.hurt(o)
+                        player.blood = player.blood - damage               
+                        prev_obs.append(o)
+                        for _ in range(30):
+                            particles.append(Particle(player.rect.centerx, player.rect.centery))
+                    elif player.blood > 0 and isinstance(o, LaserCircleObstacle):
+                        all_pass=False
+                        player.blood = player.blood - effect.hurt(o)
+                        for _ in range(30):
+                            particles.append(Particle(player.rect.centerx, player.rect.centery))
             elif player.rect.colliderect(o.rect):
                 if ( isinstance(o, LaserObstacle) and not o.activated or (isinstance(o, CannonObstacle) and o.expired)):
                     continue  # 預熱中的雷射不造成傷害
-                if prev_obs != o and player.blood > 0:
+                if o not in prev_obs and player.blood > 0:
                     all_pass=False
-                    player.blood = player.blood - 1
-                    prev_obs = o
-                    effect.hurt(o)
-                for _ in range(30):
-                    particles.append(Particle(player.rect.centerx, player.rect.centery))
+                    player.blood = player.blood - effect.hurt(o)
+                    prev_obs.append(o)
+                    for _ in range(30):
+                        particles.append(Particle(player.rect.centerx, player.rect.centery))
+                elif player.blood > 0 and isinstance(o, LaserObstacle):
+                    all_pass=False
+                    player.blood = player.blood - effect.hurt(o)
+                    for _ in range(30):
+                        particles.append(Particle(player.rect.centerx, player.rect.centery))
             
-    if all_pass:
-        prev_obs = None
-    
+        if not all_pass:
+            o.shake(15,15)
+
     return prev_obs
